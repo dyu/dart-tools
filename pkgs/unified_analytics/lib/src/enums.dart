@@ -2,14 +2,22 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-/// Values for the event name to be sent to Google Analytics
+/// The valid dash tool labels stored in the [DashTool] enum.
+List<String> get validDashTools =>
+    DashTool.values.map((e) => e.label).toList()..sort();
+
+/// Values for the event name to be sent to Google Analytics.
 ///
 /// The [label] for each enum value is what will be logged, the [description]
-/// is here for documentation purposes
+/// is here for documentation purposes.
+///
+/// Set the nullable [toolOwner] parameter if the event belongs to one specific
+/// tool, otherwise, if multiple tools will be sending the event, leave it null.
 enum DashEvent {
   // Events that can be sent by all tools; these
   // events should not be tool specific; toolOwner
   // not necessary for these events
+
   analyticsCollectionEnabled(
     label: 'analytics_collection_enabled',
     description: 'The opt-in status for analytics collection',
@@ -23,6 +31,18 @@ enum DashEvent {
     description: 'Survey shown to the user',
   ),
 
+  // Events for the Dart CLI
+  dartCliCommandExecuted(
+    label: 'dart_cli_command_executed',
+    description: 'Information about the execution of a Dart CLI command',
+    toolOwner: DashTool.dartTool,
+  ),
+  pubGet(
+    label: 'pub_get',
+    description: 'Pub package resolution details',
+    toolOwner: DashTool.dartTool,
+  ),
+
   // Events for flutter_tools
   hotReloadTime(
     label: 'hot_reload_time',
@@ -30,7 +50,8 @@ enum DashEvent {
     toolOwner: DashTool.flutterTool,
   ),
 
-  // Events for language_server
+  // Events for language_server below
+
   clientNotification(
     label: 'client_notification',
     description: 'Notifications sent from the client',
@@ -124,9 +145,21 @@ enum DashTool {
     required this.label,
     required this.description,
   });
+
+  /// This takes in the string label for a given [DashTool] and returns the
+  /// enum for that string label.
+  static DashTool getDashToolByLabel(String label) {
+    for (final tool in DashTool.values) {
+      if (tool.label == label) return tool;
+    }
+
+    throw Exception('The tool $label from the survey metadata file is not '
+        'a valid DashTool enum value\n'
+        'Valid labels for dash tools: ${validDashTools.join(', ')}');
+  }
 }
 
-/// Enumerate options for platform
+/// Enumerate options for platforms supported.
 enum DevicePlatform {
   windows('Windows'),
   macos('macOS'),

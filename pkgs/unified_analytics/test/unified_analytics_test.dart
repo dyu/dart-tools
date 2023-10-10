@@ -205,6 +205,8 @@ void main() {
   });
 
   test('Toggling telemetry boolean through Analytics class api', () async {
+    final originalClientId = clientIdFile.readAsStringSync();
+
     expect(analytics.telemetryEnabled, true,
         reason: 'Telemetry should be enabled by default '
             'when initialized for the first time');
@@ -239,6 +241,50 @@ void main() {
         reason: 'Check on event name');
     expect((lastLogItem['events'] as List).last['params']['status'], true,
         reason: 'Status should be false');
+    expect((lastLogItem['client_id'] as String).isNotEmpty, true);
+    expect(originalClientId != lastLogItem['client_id'], true,
+        reason: 'When opting in again, the client id should be regenerated');
+  });
+
+  test('Confirm client id is not empty string after opting in', () async {
+    await analytics.setTelemetry(false);
+    expect(logFile.readAsLinesSync().length, 0,
+        reason: 'Log file should have been cleared after opting out');
+    expect(clientIdFile.readAsStringSync().length, 0,
+        reason: 'CLIENT ID file gets cleared on opt out');
+
+    // Start up a second instance to simulate starting another
+    // command being run
+    final secondAnalytics = Analytics.test(
+      tool: initialTool,
+      homeDirectory: home,
+      measurementId: measurementId,
+      apiSecret: apiSecret,
+      flutterChannel: flutterChannel,
+      toolsMessageVersion: toolsMessageVersion,
+      toolsMessage: toolsMessage,
+      flutterVersion: flutterVersion,
+      dartVersion: dartVersion,
+      fs: fs,
+      platform: platform,
+    );
+
+    // Setting telemetry back on will emit a new event
+    // where the client id string should not be empty
+    await secondAnalytics.setTelemetry(true);
+    expect(analytics.telemetryEnabled, true,
+        reason: 'Analytics telemetry should be enabled');
+    expect(logFile.readAsLinesSync().length, 1,
+        reason: 'There should only one event since it was cleared on opt out');
+    expect(clientIdFile.readAsStringSync().length, greaterThan(0),
+        reason: 'CLIENT ID file gets regenerated on opt in');
+
+    // Extract the last log item to check for the keys
+    final lastLogItem =
+        jsonDecode(logFile.readAsLinesSync().last) as Map<String, Object?>;
+    expect((lastLogItem['client_id'] as String).isNotEmpty, true,
+        reason: 'The client id should have been regenerated and '
+            'emitted in the opt in event');
   });
 
   test(
@@ -604,7 +650,7 @@ ${initialTool.label}=$dateStamp,$toolsMessageVersion
     });
 
     // Add time to the start time that is less than the duration
-    final end = start.add(Duration(minutes: kSessionDurationMinutes - 1));
+    final end = start.add(const Duration(minutes: kSessionDurationMinutes - 1));
 
     // Use a new clock to ensure that the session id didn't change
     withClock(Clock.fixed(end), () {
@@ -687,7 +733,7 @@ ${initialTool.label}=$dateStamp,$toolsMessageVersion
     });
 
     // Add time to the start time that is less than the duration
-    final end = start.add(Duration(minutes: kSessionDurationMinutes + 1));
+    final end = start.add(const Duration(minutes: kSessionDurationMinutes + 1));
 
     // Use a new clock to ensure that the session id didn't change
     withClock(Clock.fixed(end), () {
@@ -820,7 +866,7 @@ ${initialTool.label}=$dateStamp,$toolsMessageVersion
 
     // Define a new clock that is outside of the session duration
     final secondClock =
-        start.add(Duration(minutes: kSessionDurationMinutes + 1));
+        start.add(const Duration(minutes: kSessionDurationMinutes + 1));
 
     // Use the new clock to send an event that will change the session identifier
     withClock(Clock.fixed(secondClock), () {
@@ -1082,7 +1128,7 @@ send basic crash reports. This data is used to help improve the Dart platform,
 Flutter framework, and related tools. Telemetry is not sent on the very first
 run. To disable reporting of telemetry, run this terminal command:
 
-flutter --disable-telemetry.
+flutter --disable-analytics.
 
 If you opt out of telemetry, an opt-out event will be sent, and then no
 further information will be sent. This data is collected in accordance with
@@ -1116,11 +1162,56 @@ send basic crash reports. This data is used to help improve the Dart platform,
 Flutter framework, and related tools. Telemetry is not sent on the very first
 run. To disable reporting of telemetry, run this terminal command:
 
-dart --disable-telemetry.
+dart --disable-analytics.
 
 If you opt out of telemetry, an opt-out event will be sent, and then no
 further information will be sent. This data is collected in accordance with
 the Google Privacy Policy (https://policies.google.com/privacy).
 '''));
+  });
+
+  test('Equality operator works for identical events', () {
+    final eventOne = Event.clientRequest(
+      duration: 'duration',
+      latency: 'latency',
+      method: 'method',
+    );
+    final eventTwo = Event.clientRequest(
+      duration: 'duration',
+      latency: 'latency',
+      method: 'method',
+    );
+
+    expect(eventOne == eventTwo, true);
+  });
+
+  test('Equality operator works for non-identical events', () {
+    final eventOne = Event.clientRequest(
+      duration: 'duration',
+      latency: 'latency',
+      method: 'method',
+      added: 'DIFFERENT FROM EVENT TWO',
+    );
+    final eventTwo = Event.clientRequest(
+      duration: 'duration',
+      latency: 'latency',
+      method: 'method',
+    );
+
+    expect(eventOne == eventTwo, false);
+  });
+
+  test('Find a match for an event in a list of events', () {
+    final eventList = [
+      Event.analyticsCollectionEnabled(status: true),
+      Event.memoryInfo(rss: 500),
+      Event.clientRequest(
+          duration: 'duration', latency: 'latency', method: 'method'),
+    ];
+
+    final eventToMatch = Event.memoryInfo(rss: 500);
+
+    expect(eventList.contains(eventToMatch), true);
+    expect(eventList.where((element) => element == eventToMatch).length, 1);
   });
 }

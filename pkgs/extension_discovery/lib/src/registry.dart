@@ -8,20 +8,22 @@ import 'dart:io' show File, FileSystemEntityType, IOException;
 import 'expect_json.dart';
 import 'io.dart';
 
+// TODO: Convert the 'rootUri' reference below to a doc comment reference once
+// https://github.com/dart-lang/linter/issues/4645 is addressed.
+
 /// Entry in the `.dart_tool/extension_discovery/<package>.json` file.
 ///
-/// If the [rootUri] is not an absolute path, then we will assume that the
+/// If the `rootUri` is not an absolute path, then we will assume that the
 /// package is mutable (either it's the root package or a path dependency).
 /// If there is no extension config file for a mutable package, then we will
-/// still store a [RegistryEntry] with `present = false`. Because everytime we
+/// still store a [RegistryEntry] with `config = null`. Because everytime we
 /// load the registry, we still need to check if a configuration file has been
 /// added to the mutable package.
 typedef RegistryEntry = ({
   String package,
   Uri rootUri,
   Uri packageUri,
-  Object? config,
-  bool present,
+  Map<String, Object?>? config,
 });
 
 typedef Registry = List<RegistryEntry>;
@@ -29,8 +31,8 @@ typedef Registry = List<RegistryEntry>;
 Future<Registry?> loadRegistry(File registryFile) async {
   try {
     final registryJson = decodeJsonMap(await registryFile.readAsString());
-    if (registryJson.expectNumber('version') != 1) {
-      throw FormatException('"version" must be 1');
+    if (registryJson.expectNumber('version') != 2) {
+      throw const FormatException('"version" must be 2');
     }
     return registryJson
         .expectListObjects('entries')
@@ -38,8 +40,7 @@ Future<Registry?> loadRegistry(File registryFile) async {
               package: e.expectString('package'),
               rootUri: e.expectUri('rootUri'),
               packageUri: e.expectUri('packageUri'),
-              config: e['config'],
-              present: e.expectBool('present'),
+              config: e.optionalMap('config'),
             ))
         .toList(growable: false);
   } on IOException {
@@ -74,14 +75,13 @@ Future<void> saveRegistry(
     }
 
     await tmpFile.writeAsString(jsonEncode({
-      'version': 1,
+      'version': 2,
       'entries': registry
           .map((e) => {
                 'package': e.package,
                 'rootUri': e.rootUri.toString(),
                 'packageUri': e.packageUri.toString(),
-                'config': e.config,
-                'present': e.present,
+                if (e.config != null) 'config': e.config,
               })
           .toList(),
     }));
